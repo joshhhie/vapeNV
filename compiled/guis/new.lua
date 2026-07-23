@@ -43,6 +43,7 @@ local scaledgui
 local toolblur
 local tooltip
 local scale
+local ui_mul = 1.15
 local gui
 
 local color = {}
@@ -2734,6 +2735,9 @@ function mainapi:CreateGUI()
 			end
 			button.BackgroundColor3 = color.Light(uipallet.Main, 0.02)
 			categorysettings.Window.Visible = self.Enabled
+			if self.Enabled then
+				mainapi:SortCategories()
+			end
 		end
 
 		button.MouseEnter:Connect(function()
@@ -4081,6 +4085,9 @@ function mainapi:CreateOverlay(categorysettings)
 
 				if categorysettings.Function then
 					task.spawn(categorysettings.Function, callback)
+				end
+				if callback then
+					mainapi:SortOverlays()
 				end
 			end,
 			Icon = categorysettings.Icon,
@@ -5719,14 +5726,14 @@ toolstroke.Color = color.Light(uipallet.Main, 0.02)
 toolstroke.Parent = toolstrokebkg
 addCorner(toolstrokebkg, UDim.new(0, 4))
 scale = Instance.new('UIScale')
-scale.Scale = math.max(gui.AbsoluteSize.X / 1920, 0.6)
+scale.Scale = math.max(gui.AbsoluteSize.X / 1920, 0.6) * ui_mul
 scale.Parent = scaledgui
 mainapi.guiscale = scale
 scaledgui.Size = UDim2.fromScale(1 / scale.Scale, 1 / scale.Scale)
 
 mainapi:Clean(gui:GetPropertyChangedSignal('AbsoluteSize'):Connect(function()
 	if mainapi.Scale.Enabled then
-		scale.Scale = math.max(gui.AbsoluteSize.X / 1920, 0.6)
+		scale.Scale = math.max(gui.AbsoluteSize.X / 1920, 0.6) * ui_mul
 	end
 end))
 
@@ -5742,6 +5749,10 @@ end))
 
 mainapi:Clean(clickgui:GetPropertyChangedSignal('Visible'):Connect(function()
 	mainapi:UpdateGUI(mainapi.GUIColor.Hue, mainapi.GUIColor.Sat, mainapi.GUIColor.Value, true)
+	if clickgui.Visible then
+		mainapi:SortCategories()
+		mainapi:SortOverlays()
+	end
 	if clickgui.Visible and inputService.MouseEnabled then
 		repeat
 			local visibleCheck = clickgui.Visible
@@ -5763,6 +5774,48 @@ mainapi:Clean(clickgui:GetPropertyChangedSignal('Visible'):Connect(function()
 end))
 
 mainapi:CreateGUI()
+
+function mainapi:SortCategories()
+	local priority = {
+		GUICategory = 1,
+		CombatCategory = 2,
+		BlatantCategory = 3,
+		RenderCategory = 4,
+		UtilityCategory = 5,
+		WorldCategory = 6,
+		InventoryCategory = 7,
+		MinigamesCategory = 8,
+		FriendsCategory = 9,
+		ProfilesCategory = 10
+	}
+	local categories = {}
+	for _, v in self.Categories do
+		if v.Type ~= 'Overlay' and v.Object then
+			table.insert(categories, v)
+		end
+	end
+	table.sort(categories, function(a, b)
+		return (priority[a.Object.Name] or 99) < (priority[b.Object.Name] or 99)
+	end)
+	local ind = 0
+	for _, v in categories do
+		if v.Object.Visible then
+			v.Object.Position = UDim2.fromOffset(6 + (ind % 8 * 230), 60 + (ind > 7 and 360 or 0))
+			ind += 1
+		end
+	end
+end
+
+function mainapi:SortOverlays()
+	local ind = 0
+	for _, v in self.Categories do
+		if v.Type == 'Overlay' and v.Object and v.Object.Visible then
+			v.Object.Position = UDim2.fromOffset(240 + (ind % 4 * 230), 46 + (math.floor(ind / 4) * 320))
+			ind += 1
+		end
+	end
+end
+
 mainapi.Categories.Main:CreateDivider()
 mainapi:CreateCategory({
 	Name = 'Combat',
@@ -6002,16 +6055,16 @@ guipane:CreateToggle({
 	Default = true,
 	Tooltip = 'Shows the button to change to Legit Mode'
 })
-local scaleslider = {Object = {}, Value = 1}
+local scaleslider = {Object = {}, Value = ui_mul}
 mainapi.Scale = guipane:CreateToggle({
 	Name = 'Auto rescale',
 	Default = true,
 	Function = function(callback)
 		scaleslider.Object.Visible = not callback
 		if callback then
-			scale.Scale = math.max(gui.AbsoluteSize.X / 1920, 0.6)
+			scale.Scale = math.max(gui.AbsoluteSize.X / 1920, 0.6) * ui_mul
 		else
-			scale.Scale = scaleslider.Value
+			scale.Scale = scaleslider.Value * ui_mul
 		end
 	end,
 	Tooltip = 'Automatically rescales the gui using the screens resolution'
@@ -6023,10 +6076,10 @@ scaleslider = guipane:CreateSlider({
 	Decimal = 10,
 	Function = function(val, final)
 		if final and not mainapi.Scale.Enabled then
-			scale.Scale = val
+			scale.Scale = val * ui_mul
 		end
 	end,
-	Default = 1,
+	Default = ui_mul,
 	Darker = true,
 	Visible = false
 })
@@ -6079,35 +6132,8 @@ guipane:CreateButton({
 guipane:CreateButton({
 	Name = 'Sort GUI',
 	Function = function()
-		local priority = {
-			GUICategory = 1,
-			CombatCategory = 2,
-			BlatantCategory = 3,
-			RenderCategory = 4,
-			UtilityCategory = 5,
-			WorldCategory = 6,
-			InventoryCategory = 7,
-			MinigamesCategory = 8,
-			FriendsCategory = 9,
-			ProfilesCategory = 10
-		}
-		local categories = {}
-		for _, v in mainapi.Categories do
-			if v.Type ~= 'Overlay' then
-				table.insert(categories, v)
-			end
-		end
-		table.sort(categories, function(a, b)
-			return (priority[a.Object.Name] or 99) < (priority[b.Object.Name] or 99)
-		end)
-
-		local ind = 0
-		for _, v in categories do
-			if v.Object.Visible then
-				v.Object.Position = UDim2.fromOffset(6 + (ind % 8 * 230), 60 + (ind > 7 and 360 or 0))
-				ind += 1
-			end
-		end
+		mainapi:SortCategories()
+		mainapi:SortOverlays()
 	end,
 	Tooltip = 'Sorts GUI'
 })
@@ -6193,12 +6219,13 @@ local textguiscale = textgui:CreateSlider({
 	Min = 0,
 	Max = 2,
 	Decimal = 10,
-	Default = 1,
+	Default = ui_mul,
 	Function = function(val)
 		VapeTextScale.Scale = val
 		mainapi:UpdateTextGUI()
 	end
 })
+VapeTextScale.Scale = ui_mul
 local textguishadow = textgui:CreateToggle({
 	Name = 'Shadow',
 	Tooltip = 'Renders shadowed text.',
