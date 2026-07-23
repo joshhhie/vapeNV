@@ -28,7 +28,7 @@ local function wipeFolder(path)
 	if not isfolder(path) then return end
 	for _, file in listfiles(path) do
 		if file:find('loader') then continue end
-		if isfile(file) and select(1, readfile(file):find('--This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.')) == 1 then
+		if isfile(file) then
 			delfile(file)
 		end
 	end
@@ -41,11 +41,10 @@ for _, folder in {'newvape', 'newvape/games', 'newvape/profiles', 'newvape/asset
 end
 
 if not shared.VapeDeveloper then
-	local commit = 'noblur'
+	local commit = 'noblur2'
 	if isfile('newvape/profiles/commit.txt') and readfile('newvape/profiles/commit.txt') ~= commit then
-		wipeFolder('newvape')
-		wipeFolder('newvape/games')
 		wipeFolder('newvape/guis')
+		wipeFolder('newvape/games')
 		wipeFolder('newvape/libraries')
 	end
 	writefile('newvape/profiles/commit.txt', commit)

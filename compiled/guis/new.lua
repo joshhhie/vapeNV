@@ -149,7 +149,7 @@ local function addBlur(parent, notif)
 	blur.Image = getcustomasset('newvape/assets/new/'..(notif and 'blurnotif' or 'blur')..'.png')
 	blur.ScaleType = Enum.ScaleType.Slice
 	blur.SliceCenter = Rect.new(52, 31, 261, 502)
-	blur.Visible = false
+	blur.ImageTransparency = 1
 	blur.Parent = parent
 
 	return blur
@@ -6545,8 +6545,6 @@ targetinfohealthextra:GetPropertyChangedSignal('Size'):Connect(function()
 	targetinfohealthextra.Visible = targetinfohealthextra.Size.X.Scale > 0.01
 end)
 local targetinfohealthblur = addBlur(targetinfohealthbkg)
-targetinfohealthblur.SliceCenter = Rect.new(52, 31, 261, 510)
-targetinfohealthblur.ImageColor3 = Color3.new()
 targetinfohealthblur.Visible = false
 local targetinfob = Instance.new('UIStroke')
 targetinfob.Enabled = false

@@ -102,7 +102,7 @@ local function addBlur(parent)
 	blur.Image = getcustomasset('newvape/assets/new/blur.png')
 	blur.ScaleType = Enum.ScaleType.Slice
 	blur.SliceCenter = Rect.new(44, 38, 804, 595)
-	blur.Visible = false
+	blur.ImageTransparency = 1
 	blur.Parent = parent
 
 	return blur
