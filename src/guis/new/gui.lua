@@ -834,9 +834,7 @@ function mainapi:CreateGUI()
 			end
 			button.BackgroundColor3 = color.Light(uipallet.Main, 0.02)
 			categorysettings.Window.Visible = self.Enabled
-			if self.Enabled then
-				mainapi:SortCategories()
-			end
+			mainapi:SortCategories()
 		end
 
 		button.MouseEnter:Connect(function()
@@ -3504,9 +3502,6 @@ function mainapi:Load(skipgui, profile)
 					object.ListEnabled = v.ListEnabled or {}
 					object:ChangeValue()
 				end
-				if v.Position then
-					object.Object.Position = UDim2.fromOffset(v.Position.X, v.Position.Y)
-				end
 			end
 		end
 	end
@@ -3549,7 +3544,6 @@ function mainapi:Load(skipgui, profile)
 				object.ListEnabled = v.ListEnabled or {}
 				object:ChangeValue()
 			end
-			object.Object.Position = UDim2.fromOffset(v.Position.X, v.Position.Y)
 		end
 
 		for i, v in savedata.Modules do
@@ -3593,6 +3587,16 @@ function mainapi:Load(skipgui, profile)
 	end
 	self.Loaded = savecheck
 	self.Categories.Main.Options.Bind:SetBind(self.Keybind)
+	self:SortCategories()
+	self:SortOverlays()
+	if mainapi.Scale.Enabled then
+		scale.Scale = math.max(gui.AbsoluteSize.X / 1920, 0.6) * ui_mul
+	else
+		scale.Scale = scaleslider.Value
+	end
+	if textguiscale then
+		VapeTextScale.Scale = textguiscale.Value
+	end
 
 	if inputService.TouchEnabled and #self.Keybind == 1 and self.Keybind[1] == 'RightShift' then
 		local button = Instance.new('TextButton')
@@ -3876,20 +3880,20 @@ mainapi:CreateGUI()
 
 function mainapi:SortCategories()
 	local priority = {
-		GUICategory = 1,
-		CombatCategory = 2,
-		BlatantCategory = 3,
-		RenderCategory = 4,
-		UtilityCategory = 5,
-		WorldCategory = 6,
-		InventoryCategory = 7,
-		MinigamesCategory = 8,
-		FriendsCategory = 9,
-		ProfilesCategory = 10
+		CombatCategory = 1,
+		BlatantCategory = 2,
+		RenderCategory = 3,
+		UtilityCategory = 4,
+		WorldCategory = 5,
+		InventoryCategory = 6,
+		MinigamesCategory = 7,
+		FriendsCategoryList = 8,
+		TargetsCategoryList = 9,
+		ProfilesCategoryList = 10
 	}
 	local categories = {}
 	for _, v in self.Categories do
-		if v.Type ~= 'Overlay' and v.Object then
+		if (v.Type == 'Category' or v.Type == 'CategoryList') and v.Object then
 			table.insert(categories, v)
 		end
 	end
@@ -3899,7 +3903,7 @@ function mainapi:SortCategories()
 	local ind = 0
 	for _, v in categories do
 		if v.Object.Visible then
-			v.Object.Position = UDim2.fromOffset(6 + (ind % 8 * 230), 60 + (ind > 7 and 360 or 0))
+			v.Object.Position = UDim2.fromOffset(236 + (ind % 7 * 230), 60 + (math.floor(ind / 7) * 360))
 			ind += 1
 		end
 	end
@@ -4163,7 +4167,7 @@ mainapi.Scale = guipane:CreateToggle({
 		if callback then
 			scale.Scale = math.max(gui.AbsoluteSize.X / 1920, 0.6) * ui_mul
 		else
-			scale.Scale = scaleslider.Value * ui_mul
+			scale.Scale = scaleslider.Value
 		end
 	end,
 	Tooltip = 'Automatically rescales the gui using the screens resolution'
@@ -4175,7 +4179,7 @@ scaleslider = guipane:CreateSlider({
 	Decimal = 10,
 	Function = function(val, final)
 		if final and not mainapi.Scale.Enabled then
-			scale.Scale = val * ui_mul
+			scale.Scale = val
 		end
 	end,
 	Default = ui_mul,
