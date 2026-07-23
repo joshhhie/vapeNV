@@ -141,10 +141,11 @@ local getfontsize = function(text, size, font)
 end
 
 local function addBlur(parent, notif)
-	local blur = Instance.new('Frame')
+	local blur = Instance.new('ImageLabel')
 	blur.Name = 'Blur'
 	blur.Size = UDim2.fromScale(0, 0)
 	blur.BackgroundTransparency = 1
+	blur.ImageTransparency = 1
 	blur.Visible = false
 	blur.Parent = parent
 	return blur
