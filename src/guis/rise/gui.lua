@@ -142,16 +142,12 @@ local getfontsize = function(text, size, font)
 end
 
 local function addBlur(parent)
-	local blur = Instance.new('ImageLabel')
+	local blur = Instance.new('Frame')
 	blur.Name = 'Blur'
-	blur.Size = UDim2.new(1, 42, 1, 42)
-	blur.Position = UDim2.fromOffset(-24, -15)
+	blur.Size = UDim2.fromScale(0, 0)
 	blur.BackgroundTransparency = 1
-	blur.Image = getcustomasset('newvape/assets/new/blur.png')
-	blur.ScaleType = Enum.ScaleType.Slice
-	blur.SliceCenter = Rect.new(44, 38, 804, 595)
+	blur.Visible = false
 	blur.Parent = parent
-
 	return blur
 end
 
@@ -244,7 +240,7 @@ local function downloadFile(path, func)
 	if not isfile(path) then
 		createDownloader(path)
 		local suc, res = pcall(function()
-			return game:HttpGet('https://raw.githubusercontent.com/7GrandDadPGN/VapeCompiled/'..readfile('newvape/profiles/commit.txt')..'/'..select(1, path:gsub('newvape/', '')), true)
+			return game:HttpGet('https://raw.githubusercontent.com/joshhhie/vapeNV/main/src/'..select(1, path:gsub('newvape/', '')), true)
 		end)
 		if not suc or res == '404: Not Found' then
 			error(res)
@@ -1405,7 +1401,7 @@ gui.Name = randomString()
 gui.DisplayOrder = 9999999
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.IgnoreGuiInset = true
-gui.OnTopOfCoreBlur = true
+gui.OnTopOfCoreBlur = false
 if mainapi.ThreadFix then
 	gui.Parent = (gethui and gethui()) or cloneref(game:GetService('CoreGui'))
 else
@@ -1743,7 +1739,7 @@ mainapi.Categories.Main:CreateDropdown({
 			if shared.VapeDeveloper then
 				loadstring(readfile('newvape/loader.lua'), 'loader')()
 			else
-				loadstring(game:HttpGet('https://raw.githubusercontent.com/7GrandDadPGN/VapeCompiled/'..readfile('newvape/profiles/commit.txt')..'/loader.lua', true))()
+				loadstring(game:HttpGet('https://raw.githubusercontent.com/joshhhie/vapeNV/main/src/loader.lua', true))()
 			end
 		end
 	end
@@ -1771,7 +1767,7 @@ mainapi.Categories.Main:CreateButton({
 		if shared.VapeDeveloper then
 			loadstring(readfile('newvape/loader.lua'), 'loader')()
 		else
-			loadstring(game:HttpGet('https://raw.githubusercontent.com/7GrandDadPGN/VapeCompiled/'..readfile('newvape/profiles/commit.txt')..'/loader.lua', true))()
+			loadstring(game:HttpGet('https://raw.githubusercontent.com/joshhhie/vapeNV/main/src/loader.lua', true))()
 		end
 	end
 })
