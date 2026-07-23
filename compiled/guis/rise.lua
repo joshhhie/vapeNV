@@ -142,12 +142,17 @@ local getfontsize = function(text, size, font)
 end
 
 local function addBlur(parent)
-	local blur = Instance.new('Frame')
+	local blur = Instance.new('ImageLabel')
 	blur.Name = 'Blur'
-	blur.Size = UDim2.fromScale(0, 0)
+	blur.Size = UDim2.new(1, 42, 1, 42)
+	blur.Position = UDim2.fromOffset(-24, -15)
 	blur.BackgroundTransparency = 1
+	blur.Image = getcustomasset('newvape/assets/new/blur.png')
+	blur.ScaleType = Enum.ScaleType.Slice
+	blur.SliceCenter = Rect.new(44, 38, 804, 595)
 	blur.Visible = false
 	blur.Parent = parent
+
 	return blur
 end
 
@@ -2504,7 +2509,7 @@ gui.Name = randomString()
 gui.DisplayOrder = 9999999
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.IgnoreGuiInset = true
-gui.OnTopOfCoreBlur = false
+gui.OnTopOfCoreBlur = true
 if mainapi.ThreadFix then
 	gui.Parent = (gethui and gethui()) or cloneref(game:GetService('CoreGui'))
 else

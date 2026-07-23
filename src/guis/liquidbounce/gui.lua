@@ -96,11 +96,15 @@ end
 local function addBlur(parent)
 	local blur = Instance.new('ImageLabel')
 	blur.Name = 'Blur'
-	blur.Size = UDim2.fromScale(0, 0)
+	blur.Size = UDim2.new(1, 42, 1, 42)
+	blur.Position = UDim2.fromOffset(-24, -15)
 	blur.BackgroundTransparency = 1
-	blur.ImageTransparency = 1
+	blur.Image = getcustomasset('newvape/assets/new/blur.png')
+	blur.ScaleType = Enum.ScaleType.Slice
+	blur.SliceCenter = Rect.new(44, 38, 804, 595)
 	blur.Visible = false
 	blur.Parent = parent
+
 	return blur
 end
 
@@ -418,7 +422,7 @@ end)
 function mainapi:BlurCheck()
 	if self.ThreadFix then
 		setthreadidentity(8)
-		runService:SetRobloxGuiFocused(false)
+		runService:SetRobloxGuiFocused((clickgui.Visible or guiService:GetErrorType() ~= Enum.ConnectionError.OK) and self.Blur.Enabled)
 	end
 end
 
@@ -726,7 +730,7 @@ gui.Name = randomString()
 gui.DisplayOrder = 9999999
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.IgnoreGuiInset = true
-gui.OnTopOfCoreBlur = false
+gui.OnTopOfCoreBlur = true
 if mainapi.ThreadFix then
 	gui.Parent = cloneref(game:GetService('CoreGui'))--(gethui and gethui()) or cloneref(game:GetService('CoreGui'))
 else

@@ -1758,7 +1758,7 @@ end)
 function mainapi:BlurCheck()
 	if self.ThreadFix then
 		setthreadidentity(8)
-		runService:SetRobloxGuiFocused(false)
+		runService:SetRobloxGuiFocused((clickgui.Visible or guiService:GetErrorType() ~= Enum.ConnectionError.OK) and self.Blur.Enabled)
 	end
 end
 
@@ -3373,7 +3373,7 @@ gui.Name = randomString()
 gui.DisplayOrder = 9999999
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Global
 gui.IgnoreGuiInset = true
-gui.OnTopOfCoreBlur = false
+gui.OnTopOfCoreBlur = true
 if mainapi.ThreadFix then
 	gui.Parent = (gethui and gethui()) or cloneref(game:GetService('CoreGui'))
 else
