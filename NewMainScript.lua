@@ -41,7 +41,7 @@ for _, folder in {'newvape', 'newvape/games', 'newvape/profiles', 'newvape/asset
 end
 
 if not shared.VapeDeveloper then
-	local commit = 'ui116'
+	local commit = 'ui118'
 	if isfile('newvape/profiles/commit.txt') and readfile('newvape/profiles/commit.txt') ~= commit then
 		wipeFolder('newvape/guis')
 		wipeFolder('newvape/games')

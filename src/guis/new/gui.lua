@@ -43,7 +43,7 @@ local scaledgui
 local toolblur
 local tooltip
 local scale
-local ui_mul = 1.15
+local ui_mul = 1.2075
 local gui
 
 local color = {}
@@ -488,6 +488,18 @@ do
 end
 
 --Spring
+
+local function settingsPane(show, pane)
+	if show then
+		pane.Visible = true
+		pane.BackgroundTransparency = 1
+		spring:Prop(pane, 'BackgroundTransparency', 0)
+	else
+		spring:Prop(pane, 'BackgroundTransparency', 1, nil, function()
+			pane.Visible = false
+		end)
+	end
+end
 
 local function categoryExpand(api, window, children, arrow, divider, windowlist, collapsed, header, max_height, width, instant)
 	api.Expanded = not api.Expanded
@@ -1217,7 +1229,7 @@ function mainapi:CreateGUI()
 			back.ImageColor3 = color.Light(uipallet.Main, 0.37)
 		end)
 		back.MouseButton1Click:Connect(function()
-			settingspane.Visible = false
+			settingsPane(false, settingspane)
 		end)
 		button.MouseEnter:Connect(function()
 			button.TextColor3 = uipallet.Text
@@ -1228,10 +1240,10 @@ function mainapi:CreateGUI()
 			button.BackgroundColor3 = uipallet.Main
 		end)
 		button.MouseButton1Click:Connect(function()
-			settingspane.Visible = true
+			settingsPane(true, settingspane)
 		end)
 		close.MouseButton1Click:Connect(function()
-			settingspane.Visible = false
+			settingsPane(false, settingspane)
 		end)
 		windowlist:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
 			if mainapi.ThreadFix then
@@ -1256,7 +1268,8 @@ function mainapi:CreateGUI()
 			Sat = 0.96,
 			Value = 0.52,
 			Rainbow = false,
-			CustomColor = false
+			CustomColor = false,
+			ColorExpanded = false
 		}
 		local slidercolors = {
 			Color3.fromRGB(250, 50, 56),
@@ -1642,10 +1655,30 @@ function mainapi:CreateGUI()
 			expandicon.ImageColor3 = color.Dark(uipallet.Text, 0.43)
 		end)
 		expandbutton.MouseButton1Click:Connect(function()
-			colorSlider.Visible = not colorSlider.Visible
-			satSlider.Visible = colorSlider.Visible
-			vibSlider.Visible = satSlider.Visible
-			expandicon.Rotation = satSlider.Visible and 180 or 0
+			optionapi.ColorExpanded = not optionapi.ColorExpanded
+			local sliders = {colorSlider, satSlider, vibSlider}
+			if optionapi.ColorExpanded then
+				for _, s in sliders do
+					s.Visible = true
+					s.ClipsDescendants = true
+					spring:Height(s, 50, 220)
+				end
+			else
+				local pending = #sliders
+				local function done()
+					pending -= 1
+					if pending <= 0 then
+						for _, s in sliders do
+							s.Visible = false
+							s.Size = UDim2.fromOffset(220, 50)
+						end
+					end
+				end
+				for _, s in sliders do
+					spring:Height(s, 0, 220, nil, done)
+				end
+			end
+			spring:Rotation(expandicon, optionapi.ColorExpanded and 180 or 0)
 		end)
 		preview.MouseButton1Click:Connect(function()
 			preview.Visible = false
@@ -1717,10 +1750,10 @@ function mainapi:CreateGUI()
 		back.ImageColor3 = color.Light(uipallet.Main, 0.37)
 	end)
 	back.MouseButton1Click:Connect(function()
-		settingspane.Visible = false
+		settingsPane(false, settingspane)
 	end)
 	close.MouseButton1Click:Connect(function()
-		settingspane.Visible = false
+		settingsPane(false, settingspane)
 	end)
 	discordbutton.MouseButton1Click:Connect(function()
 		task.spawn(function()
@@ -1760,7 +1793,7 @@ function mainapi:CreateGUI()
 		settingsicon.ImageColor3 = color.Light(uipallet.Main, 0.37)
 	end)
 	settingsbutton.MouseButton1Click:Connect(function()
-		settingspane.Visible = true
+		settingsPane(true, settingspane)
 	end)
 	windowlist:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
 		if self.ThreadFix then
@@ -3313,23 +3346,17 @@ function mainapi:CreateLegit()
 			back.ImageColor3 = color.Light(uipallet.Main, 0.37)
 		end)
 		back.MouseButton1Click:Connect(function()
-			tween:Tween(shadow, uipallet.Tween, {
-				BackgroundTransparency = 1
-			})
-			tween:Tween(settingspane, uipallet.Tween, {
-				Position = UDim2.fromScale(1, 0)
-			})
-			task.wait(0.2)
-			shadow.Visible = false
+			spring:Prop(shadow, 'BackgroundTransparency', 1)
+			spring:SlideX(settingspane, 0, nil, function()
+				shadow.Visible = false
+			end)
 		end)
 		dotsbutton.MouseButton1Click:Connect(function()
 			shadow.Visible = true
-			tween:Tween(shadow, uipallet.Tween, {
-				BackgroundTransparency = 0.5
-			})
-			tween:Tween(settingspane, uipallet.Tween, {
-				Position = UDim2.new(1, -220, 0, 0)
-			})
+			shadow.BackgroundTransparency = 1
+			settingspane.Position = UDim2.fromScale(1, 0)
+			spring:Prop(shadow, 'BackgroundTransparency', 0.5)
+			spring:SlideX(settingspane, -220)
 		end)
 		dotsbutton.MouseEnter:Connect(function()
 			dots.ImageColor3 = uipallet.Text
@@ -3352,22 +3379,16 @@ function mainapi:CreateLegit()
 		end)
 		module.MouseButton2Click:Connect(function()
 			shadow.Visible = true
-			tween:Tween(shadow, uipallet.Tween, {
-				BackgroundTransparency = 0.5
-			})
-			tween:Tween(settingspane, uipallet.Tween, {
-				Position = UDim2.new(1, -220, 0, 0)
-			})
+			shadow.BackgroundTransparency = 1
+			settingspane.Position = UDim2.fromScale(1, 0)
+			spring:Prop(shadow, 'BackgroundTransparency', 0.5)
+			spring:SlideX(settingspane, -220)
 		end)
 		shadow.MouseButton1Click:Connect(function()
-			tween:Tween(shadow, uipallet.Tween, {
-				BackgroundTransparency = 1
-			})
-			tween:Tween(settingspane, uipallet.Tween, {
-				Position = UDim2.fromScale(1, 0)
-			})
-			task.wait(0.2)
-			shadow.Visible = false
+			spring:Prop(shadow, 'BackgroundTransparency', 1)
+			spring:SlideX(settingspane, 0, nil, function()
+				shadow.Visible = false
+			end)
 		end)
 		settingswindowlist:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
 			if mainapi.ThreadFix then

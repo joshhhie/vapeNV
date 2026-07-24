@@ -173,6 +173,9 @@ function optionapi:ChangeValue(val)
 	end
 	table.clear(self.Objects)
 	window.Size = UDim2.fromOffset(220, 85 + (#self.List * 35))
+	if window.Visible then
+		spring:Height(window, 85 + (#self.List * 35), 220)
+	end
 	amount.Text = #self.List
 
 	local enabledtext = 'None'
@@ -313,12 +316,25 @@ addvalue.MouseLeave:Connect(function()
 	})
 end)
 close.MouseButton1Click:Connect(function()
-	window.Visible = false
+	spring:Height(window, 85, 220, nil, function()
+		window.Visible = false
+	end)
 end)
 button.MouseButton1Click:Connect(function()
-	window.Visible = not window.Visible
-	tween:Cancel(bkg)
-	bkg.BackgroundColor3 = window.Visible and Color3.fromHSV(mainapi.GUIColor.Hue, mainapi.GUIColor.Sat, mainapi.GUIColor.Value) or color.Light(uipallet.Main, 0.37)
+	if window.Visible then
+		spring:Height(window, 85, 220, nil, function()
+			window.Visible = false
+		end)
+		tween:Cancel(bkg)
+		bkg.BackgroundColor3 = color.Light(uipallet.Main, 0.37)
+	else
+		window.Visible = true
+		window.ClipsDescendants = true
+		local h = math.max(85, 85 + (#optionapi.List * 35))
+		spring:Height(window, h, 220)
+		tween:Cancel(bkg)
+		bkg.BackgroundColor3 = Color3.fromHSV(mainapi.GUIColor.Hue, mainapi.GUIColor.Sat, mainapi.GUIColor.Value)
+	end
 end)
 textlist.MouseEnter:Connect(function()
 	if not optionapi.Window.Visible then

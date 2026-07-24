@@ -43,7 +43,7 @@ local scaledgui
 local toolblur
 local tooltip
 local scale
-local ui_mul = 1.15
+local ui_mul = 1.2075
 local gui
 
 local color = {}
@@ -746,6 +746,16 @@ return function(Flipper)
 		return n >= 0 and math.floor(n + 0.5) or math.ceil(n - 0.5)
 	end
 
+	local function bindComplete(motor, on_complete)
+		if motor._done then
+			motor._done:disconnect()
+			motor._done = nil
+		end
+		if on_complete then
+			motor._done = motor:onComplete(on_complete)
+		end
+	end
+
 	local spring = {}
 
 	function spring:Stop(obj, prop)
@@ -755,6 +765,20 @@ return function(Flipper)
 			motor:destroy()
 			motors[key] = nil
 		end
+	end
+
+	function spring:Prop(obj, prop, target, options, on_complete)
+		local key = tostring(obj) .. prop
+		local motor = motors[key]
+		if not motor then
+			motor = Flipper.SingleMotor.new(obj[prop], true)
+			motor:onStep(function(v)
+				obj[prop] = v
+			end)
+			motors[key] = motor
+		end
+		bindComplete(motor, on_complete)
+		motor:setGoal(Flipper.Spring.new(target, options or opts))
 	end
 
 	function spring:Height(obj, target, width, options, on_complete)
@@ -770,11 +794,9 @@ return function(Flipper)
 					obj.Size = UDim2.new(obj.Size.X.Scale, obj.Size.X.Offset, 0, y)
 				end
 			end)
-			if on_complete then
-				motor:onComplete(on_complete)
-			end
 			motors[key] = motor
 		end
+		bindComplete(motor, on_complete)
 		motor:setGoal(Flipper.Spring.new(target, options or opts))
 	end
 
@@ -796,11 +818,23 @@ return function(Flipper)
 			motor:onStep(function(r)
 				obj.Rotation = r
 			end)
-			if on_complete then
-				motor:onComplete(on_complete)
-			end
 			motors[key] = motor
 		end
+		bindComplete(motor, on_complete)
+		motor:setGoal(Flipper.Spring.new(target, options or opts))
+	end
+
+	function spring:SlideX(obj, target, options, on_complete)
+		local key = tostring(obj) .. 'x'
+		local motor = motors[key]
+		if not motor then
+			motor = Flipper.SingleMotor.new(obj.Position.X.Offset, true)
+			motor:onStep(function(x)
+				obj.Position = UDim2.new(obj.Position.X.Scale, round(x), obj.Position.Y.Scale, obj.Position.Y.Offset)
+			end)
+			motors[key] = motor
+		end
+		bindComplete(motor, on_complete)
 		motor:setGoal(Flipper.Spring.new(target, options or opts))
 	end
 
@@ -808,6 +842,18 @@ return function(Flipper)
 end
 
 end)()(Flipper)
+
+local function settingsPane(show, pane)
+	if show then
+		pane.Visible = true
+		pane.BackgroundTransparency = 1
+		spring:Prop(pane, 'BackgroundTransparency', 0)
+	else
+		spring:Prop(pane, 'BackgroundTransparency', 1, nil, function()
+			pane.Visible = false
+		end)
+	end
+end
 
 local function categoryExpand(api, window, children, arrow, divider, windowlist, collapsed, header, max_height, width, instant)
 	api.Expanded = not api.Expanded
@@ -922,6 +968,7 @@ components = {
 			Value = optionsettings.DefaultValue or 1,
 			Opacity = optionsettings.DefaultOpacity or 1,
 			Rainbow = false,
+			ColorExpanded = false,
 			Index = 0
 		}
 		
@@ -1297,10 +1344,30 @@ components = {
 			expand.ImageColor3 = color.Dark(uipallet.Text, 0.43)
 		end)
 		expandbutton.MouseButton1Click:Connect(function()
-			satSlider.Visible = not satSlider.Visible
-			vibSlider.Visible = satSlider.Visible
-			opSlider.Visible = satSlider.Visible
-			expand.Rotation = satSlider.Visible and 180 or 0
+			optionapi.ColorExpanded = not optionapi.ColorExpanded
+			local sliders = {satSlider, vibSlider, opSlider}
+			if optionapi.ColorExpanded then
+				for _, s in sliders do
+					s.Visible = true
+					s.ClipsDescendants = true
+					spring:Height(s, 50, nil)
+				end
+			else
+				local pending = #sliders
+				local function done()
+					pending -= 1
+					if pending <= 0 then
+						for _, s in sliders do
+							s.Visible = false
+							s.Size = UDim2.new(1, 0, 0, 50)
+						end
+					end
+				end
+				for _, s in sliders do
+					spring:Height(s, 0, nil, nil, done)
+				end
+			end
+			spring:Rotation(expand, optionapi.ColorExpanded and 180 or 0)
 		end)
 		rainbow.MouseButton1Click:Connect(function()
 			optionapi:Toggle()
@@ -1383,18 +1450,22 @@ components = {
 		arrow.Parent = button
 		optionsettings.Function = optionsettings.Function or function() end
 		local dropdownchildren
+		local open = false
 		
 		local function closeDropdown(instant)
-			if not dropdownchildren then return end
+			if not open then return end
+			open = false
 			local function finish()
-				dropdownchildren:Destroy()
-				dropdownchildren = nil
-			end
-			if instant then
 				spring:Stop(dropdown, 'h')
 				spring:Stop(arrow, 'r')
+				if dropdownchildren then
+					dropdownchildren:Destroy()
+					dropdownchildren = nil
+				end
 				dropdown.Size = UDim2.new(1, 0, 0, 40)
 				arrow.Rotation = 90
+			end
+			if instant then
 				finish()
 			else
 				spring:Rotation(arrow, 90)
@@ -1427,51 +1498,54 @@ components = {
 		end
 		
 		button.MouseButton1Click:Connect(function()
-			if not dropdownchildren then
-				local open_height = 40 + (#optionsettings.List - 1) * 26
-				dropdownchildren = Instance.new('Frame')
-				dropdownchildren.Name = 'Children'
-				dropdownchildren.Size = UDim2.new(1, 0, 0, (#optionsettings.List - 1) * 26)
-				dropdownchildren.Position = UDim2.fromOffset(0, 27)
-				dropdownchildren.BackgroundTransparency = 1
-				dropdownchildren.Parent = button
-				local ind = 0
-				for _, v in optionsettings.List do
-					if v == optionapi.Value then continue end
-					local dropdownoption = Instance.new('TextButton')
-					dropdownoption.Name = v..'Option'
-					dropdownoption.Size = UDim2.new(1, 0, 0, 26)
-					dropdownoption.Position = UDim2.fromOffset(0, ind * 26)
-					dropdownoption.BackgroundColor3 = uipallet.Main
-					dropdownoption.BorderSizePixel = 0
-					dropdownoption.AutoButtonColor = false
-					dropdownoption.Text = '         '..v
-					dropdownoption.TextXAlignment = Enum.TextXAlignment.Left
-					dropdownoption.TextColor3 = color.Dark(uipallet.Text, 0.16)
-					dropdownoption.TextSize = 13
-					dropdownoption.TextTruncate = Enum.TextTruncate.AtEnd
-					dropdownoption.FontFace = uipallet.Font
-					dropdownoption.Parent = dropdownchildren
-					dropdownoption.MouseEnter:Connect(function()
-						tween:Tween(dropdownoption, uipallet.Tween, {
-							BackgroundColor3 = color.Light(uipallet.Main, 0.02)
-						})
-					end)
-					dropdownoption.MouseLeave:Connect(function()
-						tween:Tween(dropdownoption, uipallet.Tween, {
-							BackgroundColor3 = uipallet.Main
-						})
-					end)
-					dropdownoption.MouseButton1Click:Connect(function()
-						optionapi:SetValue(v, true)
-					end)
-					ind += 1
-				end
-				spring:Rotation(arrow, 270)
-				spring:Height(dropdown, open_height)
-			else
+			if open then
 				closeDropdown(false)
+				return
 			end
+			open = true
+			local open_height = 40 + (#optionsettings.List - 1) * 26
+			dropdownchildren = Instance.new('Frame')
+			dropdownchildren.Name = 'Children'
+			dropdownchildren.Size = UDim2.new(1, 0, 0, (#optionsettings.List - 1) * 26)
+			dropdownchildren.Position = UDim2.fromOffset(0, 27)
+			dropdownchildren.BackgroundTransparency = 1
+			dropdownchildren.Parent = button
+			local ind = 0
+			for _, v in optionsettings.List do
+				if v == optionapi.Value then continue end
+				local dropdownoption = Instance.new('TextButton')
+				dropdownoption.Name = v..'Option'
+				dropdownoption.Size = UDim2.new(1, 0, 0, 26)
+				dropdownoption.Position = UDim2.fromOffset(0, ind * 26)
+				dropdownoption.BackgroundColor3 = uipallet.Main
+				dropdownoption.BorderSizePixel = 0
+				dropdownoption.AutoButtonColor = false
+				dropdownoption.Text = '         '..v
+				dropdownoption.TextXAlignment = Enum.TextXAlignment.Left
+				dropdownoption.TextColor3 = color.Dark(uipallet.Text, 0.16)
+				dropdownoption.TextSize = 13
+				dropdownoption.TextTruncate = Enum.TextTruncate.AtEnd
+				dropdownoption.FontFace = uipallet.Font
+				dropdownoption.Parent = dropdownchildren
+				dropdownoption.MouseEnter:Connect(function()
+					tween:Tween(dropdownoption, uipallet.Tween, {
+						BackgroundColor3 = color.Light(uipallet.Main, 0.02)
+					})
+				end)
+				dropdownoption.MouseLeave:Connect(function()
+					tween:Tween(dropdownoption, uipallet.Tween, {
+						BackgroundColor3 = uipallet.Main
+					})
+				end)
+				dropdownoption.MouseButton1Click:Connect(function()
+					optionapi:SetValue(v, true)
+				end)
+				ind += 1
+			end
+			spring:Stop(dropdown, 'h')
+			spring:Stop(arrow, 'r')
+			spring:Rotation(arrow, 270)
+			spring:Height(dropdown, open_height)
 		end)
 		dropdown.MouseEnter:Connect(function()
 			tween:Tween(bkg, uipallet.Tween, {
@@ -2297,6 +2371,9 @@ components = {
 			end
 			table.clear(self.Objects)
 			window.Size = UDim2.fromOffset(220, 85 + (#self.List * 35))
+			if window.Visible then
+				spring:Height(window, 85 + (#self.List * 35), 220)
+			end
 			amount.Text = #self.List
 		
 			local enabledtext = 'None'
@@ -2437,12 +2514,25 @@ components = {
 			})
 		end)
 		close.MouseButton1Click:Connect(function()
-			window.Visible = false
+			spring:Height(window, 85, 220, nil, function()
+				window.Visible = false
+			end)
 		end)
 		button.MouseButton1Click:Connect(function()
-			window.Visible = not window.Visible
-			tween:Cancel(bkg)
-			bkg.BackgroundColor3 = window.Visible and Color3.fromHSV(mainapi.GUIColor.Hue, mainapi.GUIColor.Sat, mainapi.GUIColor.Value) or color.Light(uipallet.Main, 0.37)
+			if window.Visible then
+				spring:Height(window, 85, 220, nil, function()
+					window.Visible = false
+				end)
+				tween:Cancel(bkg)
+				bkg.BackgroundColor3 = color.Light(uipallet.Main, 0.37)
+			else
+				window.Visible = true
+				window.ClipsDescendants = true
+				local h = math.max(85, 85 + (#optionapi.List * 35))
+				spring:Height(window, h, 220)
+				tween:Cancel(bkg)
+				bkg.BackgroundColor3 = Color3.fromHSV(mainapi.GUIColor.Hue, mainapi.GUIColor.Sat, mainapi.GUIColor.Value)
+			end
 		end)
 		textlist.MouseEnter:Connect(function()
 			if not optionapi.Window.Visible then
@@ -3454,7 +3544,7 @@ function mainapi:CreateGUI()
 			back.ImageColor3 = color.Light(uipallet.Main, 0.37)
 		end)
 		back.MouseButton1Click:Connect(function()
-			settingspane.Visible = false
+			settingsPane(false, settingspane)
 		end)
 		button.MouseEnter:Connect(function()
 			button.TextColor3 = uipallet.Text
@@ -3465,10 +3555,10 @@ function mainapi:CreateGUI()
 			button.BackgroundColor3 = uipallet.Main
 		end)
 		button.MouseButton1Click:Connect(function()
-			settingspane.Visible = true
+			settingsPane(true, settingspane)
 		end)
 		close.MouseButton1Click:Connect(function()
-			settingspane.Visible = false
+			settingsPane(false, settingspane)
 		end)
 		windowlist:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
 			if mainapi.ThreadFix then
@@ -3493,7 +3583,8 @@ function mainapi:CreateGUI()
 			Sat = 0.96,
 			Value = 0.52,
 			Rainbow = false,
-			CustomColor = false
+			CustomColor = false,
+			ColorExpanded = false
 		}
 		local slidercolors = {
 			Color3.fromRGB(250, 50, 56),
@@ -3879,10 +3970,30 @@ function mainapi:CreateGUI()
 			expandicon.ImageColor3 = color.Dark(uipallet.Text, 0.43)
 		end)
 		expandbutton.MouseButton1Click:Connect(function()
-			colorSlider.Visible = not colorSlider.Visible
-			satSlider.Visible = colorSlider.Visible
-			vibSlider.Visible = satSlider.Visible
-			expandicon.Rotation = satSlider.Visible and 180 or 0
+			optionapi.ColorExpanded = not optionapi.ColorExpanded
+			local sliders = {colorSlider, satSlider, vibSlider}
+			if optionapi.ColorExpanded then
+				for _, s in sliders do
+					s.Visible = true
+					s.ClipsDescendants = true
+					spring:Height(s, 50, 220)
+				end
+			else
+				local pending = #sliders
+				local function done()
+					pending -= 1
+					if pending <= 0 then
+						for _, s in sliders do
+							s.Visible = false
+							s.Size = UDim2.fromOffset(220, 50)
+						end
+					end
+				end
+				for _, s in sliders do
+					spring:Height(s, 0, 220, nil, done)
+				end
+			end
+			spring:Rotation(expandicon, optionapi.ColorExpanded and 180 or 0)
 		end)
 		preview.MouseButton1Click:Connect(function()
 			preview.Visible = false
@@ -3954,10 +4065,10 @@ function mainapi:CreateGUI()
 		back.ImageColor3 = color.Light(uipallet.Main, 0.37)
 	end)
 	back.MouseButton1Click:Connect(function()
-		settingspane.Visible = false
+		settingsPane(false, settingspane)
 	end)
 	close.MouseButton1Click:Connect(function()
-		settingspane.Visible = false
+		settingsPane(false, settingspane)
 	end)
 	discordbutton.MouseButton1Click:Connect(function()
 		task.spawn(function()
@@ -3997,7 +4108,7 @@ function mainapi:CreateGUI()
 		settingsicon.ImageColor3 = color.Light(uipallet.Main, 0.37)
 	end)
 	settingsbutton.MouseButton1Click:Connect(function()
-		settingspane.Visible = true
+		settingsPane(true, settingspane)
 	end)
 	windowlist:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
 		if self.ThreadFix then
@@ -5550,23 +5661,17 @@ function mainapi:CreateLegit()
 			back.ImageColor3 = color.Light(uipallet.Main, 0.37)
 		end)
 		back.MouseButton1Click:Connect(function()
-			tween:Tween(shadow, uipallet.Tween, {
-				BackgroundTransparency = 1
-			})
-			tween:Tween(settingspane, uipallet.Tween, {
-				Position = UDim2.fromScale(1, 0)
-			})
-			task.wait(0.2)
-			shadow.Visible = false
+			spring:Prop(shadow, 'BackgroundTransparency', 1)
+			spring:SlideX(settingspane, 0, nil, function()
+				shadow.Visible = false
+			end)
 		end)
 		dotsbutton.MouseButton1Click:Connect(function()
 			shadow.Visible = true
-			tween:Tween(shadow, uipallet.Tween, {
-				BackgroundTransparency = 0.5
-			})
-			tween:Tween(settingspane, uipallet.Tween, {
-				Position = UDim2.new(1, -220, 0, 0)
-			})
+			shadow.BackgroundTransparency = 1
+			settingspane.Position = UDim2.fromScale(1, 0)
+			spring:Prop(shadow, 'BackgroundTransparency', 0.5)
+			spring:SlideX(settingspane, -220)
 		end)
 		dotsbutton.MouseEnter:Connect(function()
 			dots.ImageColor3 = uipallet.Text
@@ -5589,22 +5694,16 @@ function mainapi:CreateLegit()
 		end)
 		module.MouseButton2Click:Connect(function()
 			shadow.Visible = true
-			tween:Tween(shadow, uipallet.Tween, {
-				BackgroundTransparency = 0.5
-			})
-			tween:Tween(settingspane, uipallet.Tween, {
-				Position = UDim2.new(1, -220, 0, 0)
-			})
+			shadow.BackgroundTransparency = 1
+			settingspane.Position = UDim2.fromScale(1, 0)
+			spring:Prop(shadow, 'BackgroundTransparency', 0.5)
+			spring:SlideX(settingspane, -220)
 		end)
 		shadow.MouseButton1Click:Connect(function()
-			tween:Tween(shadow, uipallet.Tween, {
-				BackgroundTransparency = 1
-			})
-			tween:Tween(settingspane, uipallet.Tween, {
-				Position = UDim2.fromScale(1, 0)
-			})
-			task.wait(0.2)
-			shadow.Visible = false
+			spring:Prop(shadow, 'BackgroundTransparency', 1)
+			spring:SlideX(settingspane, 0, nil, function()
+				shadow.Visible = false
+			end)
 		end)
 		settingswindowlist:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
 			if mainapi.ThreadFix then

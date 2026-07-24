@@ -5,6 +5,7 @@ local optionapi = {
 	Value = optionsettings.DefaultValue or 1,
 	Opacity = optionsettings.DefaultOpacity or 1,
 	Rainbow = false,
+	ColorExpanded = false,
 	Index = 0
 }
 
@@ -380,10 +381,30 @@ expandbutton.MouseLeave:Connect(function()
 	expand.ImageColor3 = color.Dark(uipallet.Text, 0.43)
 end)
 expandbutton.MouseButton1Click:Connect(function()
-	satSlider.Visible = not satSlider.Visible
-	vibSlider.Visible = satSlider.Visible
-	opSlider.Visible = satSlider.Visible
-	expand.Rotation = satSlider.Visible and 180 or 0
+	optionapi.ColorExpanded = not optionapi.ColorExpanded
+	local sliders = {satSlider, vibSlider, opSlider}
+	if optionapi.ColorExpanded then
+		for _, s in sliders do
+			s.Visible = true
+			s.ClipsDescendants = true
+			spring:Height(s, 50, nil)
+		end
+	else
+		local pending = #sliders
+		local function done()
+			pending -= 1
+			if pending <= 0 then
+				for _, s in sliders do
+					s.Visible = false
+					s.Size = UDim2.new(1, 0, 0, 50)
+				end
+			end
+		end
+		for _, s in sliders do
+			spring:Height(s, 0, nil, nil, done)
+		end
+	end
+	spring:Rotation(expand, optionapi.ColorExpanded and 180 or 0)
 end)
 rainbow.MouseButton1Click:Connect(function()
 	optionapi:Toggle()

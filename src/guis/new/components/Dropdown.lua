@@ -53,18 +53,22 @@ arrow.Rotation = 90
 arrow.Parent = button
 optionsettings.Function = optionsettings.Function or function() end
 local dropdownchildren
+local open = false
 
 local function closeDropdown(instant)
-	if not dropdownchildren then return end
+	if not open then return end
+	open = false
 	local function finish()
-		dropdownchildren:Destroy()
-		dropdownchildren = nil
-	end
-	if instant then
 		spring:Stop(dropdown, 'h')
 		spring:Stop(arrow, 'r')
+		if dropdownchildren then
+			dropdownchildren:Destroy()
+			dropdownchildren = nil
+		end
 		dropdown.Size = UDim2.new(1, 0, 0, 40)
 		arrow.Rotation = 90
+	end
+	if instant then
 		finish()
 	else
 		spring:Rotation(arrow, 90)
@@ -97,51 +101,54 @@ function optionapi:SetValue(val, mouse)
 end
 
 button.MouseButton1Click:Connect(function()
-	if not dropdownchildren then
-		local open_height = 40 + (#optionsettings.List - 1) * 26
-		dropdownchildren = Instance.new('Frame')
-		dropdownchildren.Name = 'Children'
-		dropdownchildren.Size = UDim2.new(1, 0, 0, (#optionsettings.List - 1) * 26)
-		dropdownchildren.Position = UDim2.fromOffset(0, 27)
-		dropdownchildren.BackgroundTransparency = 1
-		dropdownchildren.Parent = button
-		local ind = 0
-		for _, v in optionsettings.List do
-			if v == optionapi.Value then continue end
-			local dropdownoption = Instance.new('TextButton')
-			dropdownoption.Name = v..'Option'
-			dropdownoption.Size = UDim2.new(1, 0, 0, 26)
-			dropdownoption.Position = UDim2.fromOffset(0, ind * 26)
-			dropdownoption.BackgroundColor3 = uipallet.Main
-			dropdownoption.BorderSizePixel = 0
-			dropdownoption.AutoButtonColor = false
-			dropdownoption.Text = '         '..v
-			dropdownoption.TextXAlignment = Enum.TextXAlignment.Left
-			dropdownoption.TextColor3 = color.Dark(uipallet.Text, 0.16)
-			dropdownoption.TextSize = 13
-			dropdownoption.TextTruncate = Enum.TextTruncate.AtEnd
-			dropdownoption.FontFace = uipallet.Font
-			dropdownoption.Parent = dropdownchildren
-			dropdownoption.MouseEnter:Connect(function()
-				tween:Tween(dropdownoption, uipallet.Tween, {
-					BackgroundColor3 = color.Light(uipallet.Main, 0.02)
-				})
-			end)
-			dropdownoption.MouseLeave:Connect(function()
-				tween:Tween(dropdownoption, uipallet.Tween, {
-					BackgroundColor3 = uipallet.Main
-				})
-			end)
-			dropdownoption.MouseButton1Click:Connect(function()
-				optionapi:SetValue(v, true)
-			end)
-			ind += 1
-		end
-		spring:Rotation(arrow, 270)
-		spring:Height(dropdown, open_height)
-	else
+	if open then
 		closeDropdown(false)
+		return
 	end
+	open = true
+	local open_height = 40 + (#optionsettings.List - 1) * 26
+	dropdownchildren = Instance.new('Frame')
+	dropdownchildren.Name = 'Children'
+	dropdownchildren.Size = UDim2.new(1, 0, 0, (#optionsettings.List - 1) * 26)
+	dropdownchildren.Position = UDim2.fromOffset(0, 27)
+	dropdownchildren.BackgroundTransparency = 1
+	dropdownchildren.Parent = button
+	local ind = 0
+	for _, v in optionsettings.List do
+		if v == optionapi.Value then continue end
+		local dropdownoption = Instance.new('TextButton')
+		dropdownoption.Name = v..'Option'
+		dropdownoption.Size = UDim2.new(1, 0, 0, 26)
+		dropdownoption.Position = UDim2.fromOffset(0, ind * 26)
+		dropdownoption.BackgroundColor3 = uipallet.Main
+		dropdownoption.BorderSizePixel = 0
+		dropdownoption.AutoButtonColor = false
+		dropdownoption.Text = '         '..v
+		dropdownoption.TextXAlignment = Enum.TextXAlignment.Left
+		dropdownoption.TextColor3 = color.Dark(uipallet.Text, 0.16)
+		dropdownoption.TextSize = 13
+		dropdownoption.TextTruncate = Enum.TextTruncate.AtEnd
+		dropdownoption.FontFace = uipallet.Font
+		dropdownoption.Parent = dropdownchildren
+		dropdownoption.MouseEnter:Connect(function()
+			tween:Tween(dropdownoption, uipallet.Tween, {
+				BackgroundColor3 = color.Light(uipallet.Main, 0.02)
+			})
+		end)
+		dropdownoption.MouseLeave:Connect(function()
+			tween:Tween(dropdownoption, uipallet.Tween, {
+				BackgroundColor3 = uipallet.Main
+			})
+		end)
+		dropdownoption.MouseButton1Click:Connect(function()
+			optionapi:SetValue(v, true)
+		end)
+		ind += 1
+	end
+	spring:Stop(dropdown, 'h')
+	spring:Stop(arrow, 'r')
+	spring:Rotation(arrow, 270)
+	spring:Height(dropdown, open_height)
 end)
 dropdown.MouseEnter:Connect(function()
 	tween:Tween(bkg, uipallet.Tween, {
