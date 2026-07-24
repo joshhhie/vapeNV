@@ -487,10 +487,386 @@ do
 	end
 end
 
+local Flipper = (function()
+local Signal = (function()
+local Connection = {}
+Connection.__index = Connection
+
+function Connection.new(signal, handler)
+	return setmetatable({
+		signal = signal,
+		connected = true,
+		_handler = handler,
+	}, Connection)
+end
+
+function Connection:disconnect()
+	if self.connected then
+		self.connected = false
+		for index, connection in pairs(self.signal._connections) do
+			if connection == self then
+				table.remove(self.signal._connections, index)
+				return
+			end
+		end
+	end
+end
+
+local Signal = {}
+Signal.__index = Signal
+
+function Signal.new()
+	return setmetatable({
+		_connections = {},
+		_threads = {},
+	}, Signal)
+end
+
+function Signal:fire(...)
+	for _, connection in pairs(self._connections) do
+		connection._handler(...)
+	end
+	for _, thread in pairs(self._threads) do
+		coroutine.resume(thread, ...)
+	end
+	self._threads = {}
+end
+
+function Signal:connect(handler)
+	local connection = Connection.new(self, handler)
+	table.insert(self._connections, connection)
+	return connection
+end
+
+function Signal:wait()
+	table.insert(self._threads, coroutine.running())
+	return coroutine.yield()
+end
+
+return Signal
+
+end)()
+local BaseMotor = (function()
+local RunService = game:GetService('RunService')
+
+local Signal = Signal
+
+local noop = function() end
+
+local BaseMotor = {}
+BaseMotor.__index = BaseMotor
+
+function BaseMotor.new()
+	return setmetatable({
+		_onStep = Signal.new(),
+		_onStart = Signal.new(),
+		_onComplete = Signal.new(),
+	}, BaseMotor)
+end
+
+function BaseMotor:onStep(handler)
+	return self._onStep:connect(handler)
+end
+
+function BaseMotor:onStart(handler)
+	return self._onStart:connect(handler)
+end
+
+function BaseMotor:onComplete(handler)
+	return self._onComplete:connect(handler)
+end
+
+function BaseMotor:start()
+	if not self._connection then
+		self._connection = RunService.RenderStepped:Connect(function(deltaTime)
+			self:step(deltaTime)
+		end)
+	end
+end
+
+function BaseMotor:stop()
+	if self._connection then
+		self._connection:Disconnect()
+		self._connection = nil
+	end
+end
+
+BaseMotor.destroy = BaseMotor.stop
+
+BaseMotor.step = noop
+BaseMotor.getValue = noop
+BaseMotor.setGoal = noop
+
+function BaseMotor:__tostring()
+	return 'Motor'
+end
+
+return BaseMotor
+
+end)()
+local Spring = (function()
+local VELOCITY_THRESHOLD = 0.001
+local POSITION_THRESHOLD = 0.001
+local EPS = 0.0001
+
+local Spring = {}
+Spring.__index = Spring
+
+function Spring.new(targetValue, options)
+	assert(targetValue, 'Missing argument #1: targetValue')
+	options = options or {}
+	return setmetatable({
+		_targetValue = targetValue,
+		_frequency = options.frequency or 4,
+		_dampingRatio = options.dampingRatio or 1,
+	}, Spring)
+end
+
+function Spring:step(state, dt)
+	local d = self._dampingRatio
+	local f = self._frequency * 2 * math.pi
+	local g = self._targetValue
+	local p0 = state.value
+	local v0 = state.velocity or 0
+	local offset = p0 - g
+	local decay = math.exp(-d * f * dt)
+	local p1, v1
+	if d == 1 then
+		p1 = (offset * (1 + f * dt) + v0 * dt) * decay + g
+		v1 = (v0 * (1 - f * dt) - offset * (f * f * dt)) * decay
+	elseif d < 1 then
+		local c = math.sqrt(1 - d * d)
+		local i = math.cos(f * c * dt)
+		local j = math.sin(f * c * dt)
+		local z
+		if c > EPS then
+			z = j / c
+		else
+			local a = dt * f
+			z = a + ((a * a) * (c * c) * (c * c) / 20 - c * c) * (a * a * a) / 6
+		end
+		local y
+		if f * c > EPS then
+			y = j / (f * c)
+		else
+			local b = f * c
+			y = dt + ((dt * dt) * (b * b) * (b * b) / 20 - b * b) * (dt * dt * dt) / 6
+		end
+		p1 = (offset * (i + d * z) + v0 * y) * decay + g
+		v1 = (v0 * (i - z * d) - offset * (z * f)) * decay
+	else
+		local c = math.sqrt(d * d - 1)
+		local r1 = -f * (d - c)
+		local r2 = -f * (d + c)
+		local co2 = (v0 - offset * r1) / (2 * f * c)
+		local co1 = offset - co2
+		local e1 = co1 * math.exp(r1 * dt)
+		local e2 = co2 * math.exp(r2 * dt)
+		p1 = e1 + e2 + g
+		v1 = e1 * r1 + e2 * r2
+	end
+	local complete = math.abs(v1) < VELOCITY_THRESHOLD and math.abs(p1 - g) < POSITION_THRESHOLD
+	return {
+		complete = complete,
+		value = complete and g or p1,
+		velocity = v1,
+	}
+end
+
+return Spring
+
+end)()
+local SingleMotor = (function()
+local BaseMotor = BaseMotor
+
+local SingleMotor = setmetatable({}, BaseMotor)
+SingleMotor.__index = SingleMotor
+
+function SingleMotor.new(initialValue, useImplicitConnections)
+	assert(initialValue, 'Missing argument #1: initialValue')
+	assert(typeof(initialValue) == 'number', 'initialValue must be a number!')
+	local self = setmetatable(BaseMotor.new(), SingleMotor)
+	if useImplicitConnections ~= nil then
+		self._useImplicitConnections = useImplicitConnections
+	else
+		self._useImplicitConnections = true
+	end
+	self._goal = nil
+	self._state = {
+		complete = true,
+		value = initialValue,
+	}
+	return self
+end
+
+function SingleMotor:step(deltaTime)
+	if self._state.complete then
+		return true
+	end
+	local newState = self._goal:step(self._state, deltaTime)
+	self._state = newState
+	self._onStep:fire(newState.value)
+	if newState.complete then
+		if self._useImplicitConnections then
+			self:stop()
+		end
+		self._onComplete:fire()
+	end
+	return newState.complete
+end
+
+function SingleMotor:getValue()
+	return self._state.value
+end
+
+function SingleMotor:setGoal(goal)
+	self._state.complete = false
+	self._goal = goal
+	self._onStart:fire()
+	if self._useImplicitConnections then
+		self:start()
+	end
+end
+
+function SingleMotor:__tostring()
+	return 'Motor(Single)'
+end
+
+return SingleMotor
+
+end)()
+return { Spring = Spring, SingleMotor = SingleMotor }
+end)()
+local spring = (function()
+return function(Flipper)
+	local motors = {}
+	local opts = { frequency = 4, dampingRatio = 1 }
+
+	local function round(n)
+		return n >= 0 and math.floor(n + 0.5) or math.ceil(n - 0.5)
+	end
+
+	local spring = {}
+
+	function spring:Stop(obj, prop)
+		local key = tostring(obj) .. prop
+		local motor = motors[key]
+		if motor then
+			motor:destroy()
+			motors[key] = nil
+		end
+	end
+
+	function spring:Height(obj, target, width, options, on_complete)
+		local key = tostring(obj) .. 'h'
+		local motor = motors[key]
+		if not motor then
+			motor = Flipper.SingleMotor.new(obj.Size.Y.Offset, true)
+			motor:onStep(function(y)
+				y = round(y)
+				if width then
+					obj.Size = UDim2.fromOffset(width, y)
+				else
+					obj.Size = UDim2.new(obj.Size.X.Scale, obj.Size.X.Offset, 0, y)
+				end
+			end)
+			if on_complete then
+				motor:onComplete(on_complete)
+			end
+			motors[key] = motor
+		end
+		motor:setGoal(Flipper.Spring.new(target, options or opts))
+	end
+
+	function spring:HeightInstant(obj, target, width)
+		self:Stop(obj, 'h')
+		local y = round(target)
+		if width then
+			obj.Size = UDim2.fromOffset(width, y)
+		else
+			obj.Size = UDim2.new(obj.Size.X.Scale, obj.Size.X.Offset, 0, y)
+		end
+	end
+
+	function spring:Rotation(obj, target, options, on_complete)
+		local key = tostring(obj) .. 'r'
+		local motor = motors[key]
+		if not motor then
+			motor = Flipper.SingleMotor.new(obj.Rotation, true)
+			motor:onStep(function(r)
+				obj.Rotation = r
+			end)
+			if on_complete then
+				motor:onComplete(on_complete)
+			end
+			motors[key] = motor
+		end
+		motor:setGoal(Flipper.Spring.new(target, options or opts))
+	end
+
+	return spring
+end
+
+end)()(Flipper)
+
+local function categoryExpand(api, window, children, arrow, divider, windowlist, collapsed, header, max_height, width, instant)
+	api.Expanded = not api.Expanded
+	local target = api.Expanded and math.min(header + windowlist.AbsoluteContentSize.Y / scale.Scale, max_height) or collapsed
+	if instant then
+		spring:Stop(window, 'h')
+		if arrow then
+			spring:Stop(arrow, 'r')
+		end
+		if api.Expanded then
+			children.Visible = true
+		else
+			children.Visible = false
+		end
+		if arrow then
+			arrow.Rotation = api.Expanded and 0 or 180
+		end
+		spring:HeightInstant(window, target, width)
+		if divider then
+			divider.Visible = children.CanvasPosition.Y > 10 and children.Visible
+		end
+		return
+	end
+	window.ClipsDescendants = true
+	if api.Expanded then
+		children.Visible = true
+	end
+	if arrow then
+		spring:Rotation(arrow, api.Expanded and 0 or 180)
+	end
+	spring:Height(window, target, width, nil, function()
+		if not api.Expanded then
+			children.Visible = false
+		end
+		if divider then
+			divider.Visible = children.CanvasPosition.Y > 10 and children.Visible
+		end
+	end)
+end
+
+local function moduleExpand(moduleapi, modulechildren, modlist, modulebutton)
+	moduleapi.ModuleExpanded = not moduleapi.ModuleExpanded
+	local target = moduleapi.ModuleExpanded and modlist.AbsoluteContentSize.Y / scale.Scale or 0
+	if moduleapi.ModuleExpanded then
+		modulechildren.Visible = true
+	end
+	modulechildren.ClipsDescendants = true
+	spring:Height(modulechildren, target, nil, nil, function()
+		if not moduleapi.ModuleExpanded then
+			modulechildren.Visible = false
+		end
+	end)
+end
+
 mainapi.Libraries = {
 	color = color,
 	getcustomasset = getcustomasset,
 	getfontsize = getfontsize,
+	spring = spring,
 	tween = tween,
 	uipallet = uipallet,
 }
@@ -966,6 +1342,7 @@ components = {
 		dropdown.AutoButtonColor = false
 		dropdown.Visible = optionsettings.Visible == nil or optionsettings.Visible
 		dropdown.Text = ''
+		dropdown.ClipsDescendants = true
 		dropdown.Parent = children
 		addTooltip(dropdown, optionsettings.Tooltip or optionsettings.Name)
 		local bkg = Instance.new('Frame')
@@ -1007,6 +1384,24 @@ components = {
 		optionsettings.Function = optionsettings.Function or function() end
 		local dropdownchildren
 		
+		local function closeDropdown(instant)
+			if not dropdownchildren then return end
+			local function finish()
+				dropdownchildren:Destroy()
+				dropdownchildren = nil
+			end
+			if instant then
+				spring:Stop(dropdown, 'h')
+				spring:Stop(arrow, 'r')
+				dropdown.Size = UDim2.new(1, 0, 0, 40)
+				arrow.Rotation = 90
+				finish()
+			else
+				spring:Rotation(arrow, 90)
+				spring:Height(dropdown, 40, nil, nil, finish)
+			end
+		end
+		
 		function optionapi:Save(tab)
 			tab[optionsettings.Name] = {Value = self.Value}
 		end
@@ -1027,19 +1422,13 @@ components = {
 		function optionapi:SetValue(val, mouse)
 			self.Value = table.find(optionsettings.List, val) and val or optionsettings.List[1] or 'None'
 			title.Text = '         '..optionsettings.Name..' - '..self.Value
-			if dropdownchildren then
-				arrow.Rotation = 90
-				dropdownchildren:Destroy()
-				dropdownchildren = nil
-				dropdown.Size = UDim2.new(1, 0, 0, 40)
-			end
+			closeDropdown(not mouse)
 			optionsettings.Function(self.Value, mouse)
 		end
 		
 		button.MouseButton1Click:Connect(function()
 			if not dropdownchildren then
-				arrow.Rotation = 270
-				dropdown.Size = UDim2.new(1, 0, 0, 40 + (#optionsettings.List - 1) * 26)
+				local open_height = 40 + (#optionsettings.List - 1) * 26
 				dropdownchildren = Instance.new('Frame')
 				dropdownchildren.Name = 'Children'
 				dropdownchildren.Size = UDim2.new(1, 0, 0, (#optionsettings.List - 1) * 26)
@@ -1078,8 +1467,10 @@ components = {
 					end)
 					ind += 1
 				end
+				spring:Rotation(arrow, 270)
+				spring:Height(dropdown, open_height)
 			else
-				optionapi:SetValue(optionapi.Value, true)
+				closeDropdown(false)
 			end
 		end)
 		dropdown.MouseEnter:Connect(function()
@@ -1097,6 +1488,7 @@ components = {
 		api.Options[optionsettings.Name] = optionapi
 		
 		return optionapi
+		
 	end,
 	Font = function(optionsettings, children, api)
 		local fonts = {
@@ -3706,6 +4098,7 @@ function mainapi:CreateCategory(categorysettings)
 		mainapi:Remove(modulesettings.Name)
 		local moduleapi = {
 			Enabled = false,
+			ModuleExpanded = false,
 			Options = {},
 			Bind = {},
 			Index = getTableSize(mainapi.Modules),
@@ -3910,10 +4303,10 @@ function mainapi:CreateCategory(categorysettings)
 			end
 		end)
 		dotsbutton.MouseButton1Click:Connect(function()
-			modulechildren.Visible = not modulechildren.Visible
+			moduleExpand(moduleapi, modulechildren, windowlist, modulebutton)
 		end)
 		dotsbutton.MouseButton2Click:Connect(function()
-			modulechildren.Visible = not modulechildren.Visible
+			moduleExpand(moduleapi, modulechildren, windowlist, modulebutton)
 		end)
 		modulebutton.MouseEnter:Connect(function()
 			hovered = true
@@ -3935,7 +4328,7 @@ function mainapi:CreateCategory(categorysettings)
 			moduleapi:Toggle()
 		end)
 		modulebutton.MouseButton2Click:Connect(function()
-			modulechildren.Visible = not modulechildren.Visible
+			moduleExpand(moduleapi, modulechildren, windowlist, modulebutton)
 		end)
 		if inputService.TouchEnabled then
 			local heldbutton = false
@@ -3986,7 +4379,9 @@ function mainapi:CreateCategory(categorysettings)
 			if mainapi.ThreadFix then
 				setthreadidentity(8)
 			end
-			modulechildren.Size = UDim2.new(1, 0, 0, windowlist.AbsoluteContentSize.Y / scale.Scale)
+			if moduleapi.ModuleExpanded then
+				spring:Height(modulechildren, windowlist.AbsoluteContentSize.Y / scale.Scale)
+			end
 		end)
 
 		moduleapi.Object = modulebutton
@@ -4010,12 +4405,8 @@ function mainapi:CreateCategory(categorysettings)
 		return moduleapi
 	end
 
-	function categoryapi:Expand()
-		self.Expanded = not self.Expanded
-		children.Visible = self.Expanded
-		arrow.Rotation = self.Expanded and 0 or 180
-		window.Size = UDim2.fromOffset(220, self.Expanded and math.min(41 + windowlist.AbsoluteContentSize.Y / scale.Scale, 601) or 41)
-		divider.Visible = children.CanvasPosition.Y > 10 and children.Visible
+	function categoryapi:Expand(instant)
+		categoryExpand(categoryapi, window, children, arrow, divider, windowlist, 41, 41, 601, 220, instant)
 	end
 
 	arrowbutton.MouseButton1Click:Connect(function()
@@ -4047,7 +4438,7 @@ function mainapi:CreateCategory(categorysettings)
 		end
 		children.CanvasSize = UDim2.fromOffset(0, windowlist.AbsoluteContentSize.Y / scale.Scale)
 		if categoryapi.Expanded then
-			window.Size = UDim2.fromOffset(220, math.min(41 + windowlist.AbsoluteContentSize.Y / scale.Scale, 601))
+			spring:Height(window, math.min(41 + windowlist.AbsoluteContentSize.Y / scale.Scale, 601), 220)
 		end
 	end)
 
@@ -4174,16 +4565,26 @@ function mainapi:CreateOverlay(categorysettings)
 	windowlist.Parent = children
 	addMaid(categoryapi)
 
-	function categoryapi:Expand(check)
+	function categoryapi:Expand(check, instant)
 		if check and not blur.Visible then return end
-		self.Expanded = not self.Expanded
-		children.Visible = self.Expanded
-		dots.ImageColor3 = self.Expanded and uipallet.Text or color.Light(uipallet.Main, 0.37)
-		if self.Expanded then
-			window.Size = UDim2.fromOffset(window.Size.X.Offset, math.min(41 + windowlist.AbsoluteContentSize.Y / scale.Scale, 601))
-		else
-			window.Size = UDim2.fromOffset(window.Size.X.Offset, 41)
+		categoryapi.Expanded = not categoryapi.Expanded
+		local target = categoryapi.Expanded and math.min(41 + windowlist.AbsoluteContentSize.Y / scale.Scale, 601) or 41
+		dots.ImageColor3 = categoryapi.Expanded and uipallet.Text or color.Light(uipallet.Main, 0.37)
+		if instant then
+			spring:Stop(window, 'h')
+			children.Visible = categoryapi.Expanded
+			spring:HeightInstant(window, target, window.Size.X.Offset)
+			return
 		end
+		window.ClipsDescendants = true
+		if categoryapi.Expanded then
+			children.Visible = true
+		end
+		spring:Height(window, target, window.Size.X.Offset, nil, function()
+			if not categoryapi.Expanded then
+				children.Visible = false
+			end
+		end)
 	end
 
 	function categoryapi:Pin()
@@ -4194,7 +4595,7 @@ function mainapi:CreateOverlay(categorysettings)
 	function categoryapi:Update()
 		window.Visible = self.Button.Enabled and (clickgui.Visible or self.Pinned)
 		if self.Expanded then
-			self:Expand()
+			categoryapi:Expand(false, true)
 		end
 		if clickgui.Visible then
 			window.Size = UDim2.fromOffset(window.Size.X.Offset, 41)
@@ -4249,7 +4650,7 @@ function mainapi:CreateOverlay(categorysettings)
 		end
 		children.CanvasSize = UDim2.fromOffset(0, windowlist.AbsoluteContentSize.Y / scale.Scale)
 		if categoryapi.Expanded then
-			window.Size = UDim2.fromOffset(window.Size.X.Offset, math.min(41 + windowlist.AbsoluteContentSize.Y / scale.Scale, 601))
+			spring:Height(window, math.min(41 + windowlist.AbsoluteContentSize.Y / scale.Scale, 601), window.Size.X.Offset)
 		end
 	end)
 	self:Clean(clickgui:GetPropertyChangedSignal('Visible'):Connect(function()
@@ -4711,12 +5112,8 @@ function mainapi:CreateCategoryList(categorysettings)
 		mainapi:UpdateGUI(mainapi.GUIColor.Hue, mainapi.GUIColor.Sat, mainapi.GUIColor.Value)
 	end
 
-	function categoryapi:Expand()
-		self.Expanded = not self.Expanded
-		children.Visible = self.Expanded
-		arrow.Rotation = self.Expanded and 0 or 180
-		window.Size = UDim2.fromOffset(220, self.Expanded and math.min(51 + windowlist.AbsoluteContentSize.Y / scale.Scale, 611) or 45)
-		divider.Visible = children.CanvasPosition.Y > 10 and children.Visible
+	function categoryapi:Expand(instant)
+		categoryExpand(categoryapi, window, children, arrow, divider, windowlist, 45, 51, 611, 220, instant)
 	end
 
 	function categoryapi:GetValue(name)
@@ -4796,7 +5193,7 @@ function mainapi:CreateCategoryList(categorysettings)
 		end
 		children.CanvasSize = UDim2.fromOffset(0, windowlist.AbsoluteContentSize.Y / scale.Scale)
 		if categoryapi.Expanded then
-			window.Size = UDim2.fromOffset(220, math.min(51 + windowlist.AbsoluteContentSize.Y / scale.Scale, 611))
+			spring:Height(window, math.min(51 + windowlist.AbsoluteContentSize.Y / scale.Scale, 611), 220)
 		end
 	end)
 	windowlisttwo:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()

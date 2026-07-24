@@ -487,10 +487,66 @@ do
 	end
 end
 
+--Spring
+
+local function categoryExpand(api, window, children, arrow, divider, windowlist, collapsed, header, max_height, width, instant)
+	api.Expanded = not api.Expanded
+	local target = api.Expanded and math.min(header + windowlist.AbsoluteContentSize.Y / scale.Scale, max_height) or collapsed
+	if instant then
+		spring:Stop(window, 'h')
+		if arrow then
+			spring:Stop(arrow, 'r')
+		end
+		if api.Expanded then
+			children.Visible = true
+		else
+			children.Visible = false
+		end
+		if arrow then
+			arrow.Rotation = api.Expanded and 0 or 180
+		end
+		spring:HeightInstant(window, target, width)
+		if divider then
+			divider.Visible = children.CanvasPosition.Y > 10 and children.Visible
+		end
+		return
+	end
+	window.ClipsDescendants = true
+	if api.Expanded then
+		children.Visible = true
+	end
+	if arrow then
+		spring:Rotation(arrow, api.Expanded and 0 or 180)
+	end
+	spring:Height(window, target, width, nil, function()
+		if not api.Expanded then
+			children.Visible = false
+		end
+		if divider then
+			divider.Visible = children.CanvasPosition.Y > 10 and children.Visible
+		end
+	end)
+end
+
+local function moduleExpand(moduleapi, modulechildren, modlist, modulebutton)
+	moduleapi.ModuleExpanded = not moduleapi.ModuleExpanded
+	local target = moduleapi.ModuleExpanded and modlist.AbsoluteContentSize.Y / scale.Scale or 0
+	if moduleapi.ModuleExpanded then
+		modulechildren.Visible = true
+	end
+	modulechildren.ClipsDescendants = true
+	spring:Height(modulechildren, target, nil, nil, function()
+		if not moduleapi.ModuleExpanded then
+			modulechildren.Visible = false
+		end
+	end)
+end
+
 mainapi.Libraries = {
 	color = color,
 	getcustomasset = getcustomasset,
 	getfontsize = getfontsize,
+	spring = spring,
 	tween = tween,
 	uipallet = uipallet,
 }
@@ -1805,6 +1861,7 @@ function mainapi:CreateCategory(categorysettings)
 		mainapi:Remove(modulesettings.Name)
 		local moduleapi = {
 			Enabled = false,
+			ModuleExpanded = false,
 			Options = {},
 			Bind = {},
 			Index = getTableSize(mainapi.Modules),
@@ -2009,10 +2066,10 @@ function mainapi:CreateCategory(categorysettings)
 			end
 		end)
 		dotsbutton.MouseButton1Click:Connect(function()
-			modulechildren.Visible = not modulechildren.Visible
+			moduleExpand(moduleapi, modulechildren, windowlist, modulebutton)
 		end)
 		dotsbutton.MouseButton2Click:Connect(function()
-			modulechildren.Visible = not modulechildren.Visible
+			moduleExpand(moduleapi, modulechildren, windowlist, modulebutton)
 		end)
 		modulebutton.MouseEnter:Connect(function()
 			hovered = true
@@ -2034,7 +2091,7 @@ function mainapi:CreateCategory(categorysettings)
 			moduleapi:Toggle()
 		end)
 		modulebutton.MouseButton2Click:Connect(function()
-			modulechildren.Visible = not modulechildren.Visible
+			moduleExpand(moduleapi, modulechildren, windowlist, modulebutton)
 		end)
 		if inputService.TouchEnabled then
 			local heldbutton = false
@@ -2085,7 +2142,9 @@ function mainapi:CreateCategory(categorysettings)
 			if mainapi.ThreadFix then
 				setthreadidentity(8)
 			end
-			modulechildren.Size = UDim2.new(1, 0, 0, windowlist.AbsoluteContentSize.Y / scale.Scale)
+			if moduleapi.ModuleExpanded then
+				spring:Height(modulechildren, windowlist.AbsoluteContentSize.Y / scale.Scale)
+			end
 		end)
 
 		moduleapi.Object = modulebutton
@@ -2109,12 +2168,8 @@ function mainapi:CreateCategory(categorysettings)
 		return moduleapi
 	end
 
-	function categoryapi:Expand()
-		self.Expanded = not self.Expanded
-		children.Visible = self.Expanded
-		arrow.Rotation = self.Expanded and 0 or 180
-		window.Size = UDim2.fromOffset(220, self.Expanded and math.min(41 + windowlist.AbsoluteContentSize.Y / scale.Scale, 601) or 41)
-		divider.Visible = children.CanvasPosition.Y > 10 and children.Visible
+	function categoryapi:Expand(instant)
+		categoryExpand(categoryapi, window, children, arrow, divider, windowlist, 41, 41, 601, 220, instant)
 	end
 
 	arrowbutton.MouseButton1Click:Connect(function()
@@ -2146,7 +2201,7 @@ function mainapi:CreateCategory(categorysettings)
 		end
 		children.CanvasSize = UDim2.fromOffset(0, windowlist.AbsoluteContentSize.Y / scale.Scale)
 		if categoryapi.Expanded then
-			window.Size = UDim2.fromOffset(220, math.min(41 + windowlist.AbsoluteContentSize.Y / scale.Scale, 601))
+			spring:Height(window, math.min(41 + windowlist.AbsoluteContentSize.Y / scale.Scale, 601), 220)
 		end
 	end)
 
@@ -2273,16 +2328,26 @@ function mainapi:CreateOverlay(categorysettings)
 	windowlist.Parent = children
 	addMaid(categoryapi)
 
-	function categoryapi:Expand(check)
+	function categoryapi:Expand(check, instant)
 		if check and not blur.Visible then return end
-		self.Expanded = not self.Expanded
-		children.Visible = self.Expanded
-		dots.ImageColor3 = self.Expanded and uipallet.Text or color.Light(uipallet.Main, 0.37)
-		if self.Expanded then
-			window.Size = UDim2.fromOffset(window.Size.X.Offset, math.min(41 + windowlist.AbsoluteContentSize.Y / scale.Scale, 601))
-		else
-			window.Size = UDim2.fromOffset(window.Size.X.Offset, 41)
+		categoryapi.Expanded = not categoryapi.Expanded
+		local target = categoryapi.Expanded and math.min(41 + windowlist.AbsoluteContentSize.Y / scale.Scale, 601) or 41
+		dots.ImageColor3 = categoryapi.Expanded and uipallet.Text or color.Light(uipallet.Main, 0.37)
+		if instant then
+			spring:Stop(window, 'h')
+			children.Visible = categoryapi.Expanded
+			spring:HeightInstant(window, target, window.Size.X.Offset)
+			return
 		end
+		window.ClipsDescendants = true
+		if categoryapi.Expanded then
+			children.Visible = true
+		end
+		spring:Height(window, target, window.Size.X.Offset, nil, function()
+			if not categoryapi.Expanded then
+				children.Visible = false
+			end
+		end)
 	end
 
 	function categoryapi:Pin()
@@ -2293,7 +2358,7 @@ function mainapi:CreateOverlay(categorysettings)
 	function categoryapi:Update()
 		window.Visible = self.Button.Enabled and (clickgui.Visible or self.Pinned)
 		if self.Expanded then
-			self:Expand()
+			categoryapi:Expand(false, true)
 		end
 		if clickgui.Visible then
 			window.Size = UDim2.fromOffset(window.Size.X.Offset, 41)
@@ -2348,7 +2413,7 @@ function mainapi:CreateOverlay(categorysettings)
 		end
 		children.CanvasSize = UDim2.fromOffset(0, windowlist.AbsoluteContentSize.Y / scale.Scale)
 		if categoryapi.Expanded then
-			window.Size = UDim2.fromOffset(window.Size.X.Offset, math.min(41 + windowlist.AbsoluteContentSize.Y / scale.Scale, 601))
+			spring:Height(window, math.min(41 + windowlist.AbsoluteContentSize.Y / scale.Scale, 601), window.Size.X.Offset)
 		end
 	end)
 	self:Clean(clickgui:GetPropertyChangedSignal('Visible'):Connect(function()
@@ -2810,12 +2875,8 @@ function mainapi:CreateCategoryList(categorysettings)
 		mainapi:UpdateGUI(mainapi.GUIColor.Hue, mainapi.GUIColor.Sat, mainapi.GUIColor.Value)
 	end
 
-	function categoryapi:Expand()
-		self.Expanded = not self.Expanded
-		children.Visible = self.Expanded
-		arrow.Rotation = self.Expanded and 0 or 180
-		window.Size = UDim2.fromOffset(220, self.Expanded and math.min(51 + windowlist.AbsoluteContentSize.Y / scale.Scale, 611) or 45)
-		divider.Visible = children.CanvasPosition.Y > 10 and children.Visible
+	function categoryapi:Expand(instant)
+		categoryExpand(categoryapi, window, children, arrow, divider, windowlist, 45, 51, 611, 220, instant)
 	end
 
 	function categoryapi:GetValue(name)
@@ -2895,7 +2956,7 @@ function mainapi:CreateCategoryList(categorysettings)
 		end
 		children.CanvasSize = UDim2.fromOffset(0, windowlist.AbsoluteContentSize.Y / scale.Scale)
 		if categoryapi.Expanded then
-			window.Size = UDim2.fromOffset(220, math.min(51 + windowlist.AbsoluteContentSize.Y / scale.Scale, 611))
+			spring:Height(window, math.min(51 + windowlist.AbsoluteContentSize.Y / scale.Scale, 611), 220)
 		end
 	end)
 	windowlisttwo:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()

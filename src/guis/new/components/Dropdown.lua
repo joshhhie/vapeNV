@@ -12,6 +12,7 @@ dropdown.BorderSizePixel = 0
 dropdown.AutoButtonColor = false
 dropdown.Visible = optionsettings.Visible == nil or optionsettings.Visible
 dropdown.Text = ''
+dropdown.ClipsDescendants = true
 dropdown.Parent = children
 addTooltip(dropdown, optionsettings.Tooltip or optionsettings.Name)
 local bkg = Instance.new('Frame')
@@ -53,6 +54,24 @@ arrow.Parent = button
 optionsettings.Function = optionsettings.Function or function() end
 local dropdownchildren
 
+local function closeDropdown(instant)
+	if not dropdownchildren then return end
+	local function finish()
+		dropdownchildren:Destroy()
+		dropdownchildren = nil
+	end
+	if instant then
+		spring:Stop(dropdown, 'h')
+		spring:Stop(arrow, 'r')
+		dropdown.Size = UDim2.new(1, 0, 0, 40)
+		arrow.Rotation = 90
+		finish()
+	else
+		spring:Rotation(arrow, 90)
+		spring:Height(dropdown, 40, nil, nil, finish)
+	end
+end
+
 function optionapi:Save(tab)
 	tab[optionsettings.Name] = {Value = self.Value}
 end
@@ -73,19 +92,13 @@ end
 function optionapi:SetValue(val, mouse)
 	self.Value = table.find(optionsettings.List, val) and val or optionsettings.List[1] or 'None'
 	title.Text = '         '..optionsettings.Name..' - '..self.Value
-	if dropdownchildren then
-		arrow.Rotation = 90
-		dropdownchildren:Destroy()
-		dropdownchildren = nil
-		dropdown.Size = UDim2.new(1, 0, 0, 40)
-	end
+	closeDropdown(not mouse)
 	optionsettings.Function(self.Value, mouse)
 end
 
 button.MouseButton1Click:Connect(function()
 	if not dropdownchildren then
-		arrow.Rotation = 270
-		dropdown.Size = UDim2.new(1, 0, 0, 40 + (#optionsettings.List - 1) * 26)
+		local open_height = 40 + (#optionsettings.List - 1) * 26
 		dropdownchildren = Instance.new('Frame')
 		dropdownchildren.Name = 'Children'
 		dropdownchildren.Size = UDim2.new(1, 0, 0, (#optionsettings.List - 1) * 26)
@@ -124,8 +137,10 @@ button.MouseButton1Click:Connect(function()
 			end)
 			ind += 1
 		end
+		spring:Rotation(arrow, 270)
+		spring:Height(dropdown, open_height)
 	else
-		optionapi:SetValue(optionapi.Value, true)
+		closeDropdown(false)
 	end
 end)
 dropdown.MouseEnter:Connect(function()
